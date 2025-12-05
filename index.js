@@ -47,6 +47,30 @@ app.use(
         },
     }),
 );
+// Root route
+app.get('/', (req, res) => {
+    res.json({
+        message: 'TechShop API Server',
+        status: 'running',
+        version: '1.0.0',
+        endpoints: {
+            products: '/product',
+            users: '/user',
+            auth: '/auth',
+            cart: '/cart',
+            category: '/category',
+            coupon: '/coupon',
+            order: '/order',
+            wishlist: '/wishlist',
+            notification: '/notification',
+            returnOrder: '/returnOrder'
+        }
+    });
+});
+
+// Alias for /products -> /product
+app.use('/products', routerProduct);
+
 app.use('/product', routerProduct);
 app.use('/user', routerUser);
 app.use('/auth', authRoute);
@@ -57,6 +81,22 @@ app.use('/order', orderRoute);
 app.use('/wishlist', wishlistRoute);
 app.use('/notification', notificationRoute);
 app.use('/returnOrder', returnOrderRoute);
+
+// Handle GET requests to /login and /auth/login (informational)
+app.get('/login', (req, res) => {
+    res.status(405).json({
+        error: 'Method not allowed',
+        message: 'Please use POST /auth/login for authentication'
+    });
+});
+
+app.get('/auth/login', (req, res) => {
+    res.status(405).json({
+        error: 'Method not allowed',
+        message: 'Please use POST /auth/login for authentication'
+    });
+});
+
 const httpServer = createServer(app);
 
 initializeSocket(httpServer);
