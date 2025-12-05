@@ -24,15 +24,27 @@ const { initializeSocket } = require('./socket');
 const app = express();
 
 app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.use(morgan('common'));
-app.use(
-    cors({
-        origin: process.env.URL_CLIENT,
-        methods: ['GET', 'POST', 'PUT', 'DELETE'],
-        credentials: true,
-    }),
-);
+
+// CORS configuration - cho phép tất cả origins trong development, chỉ production trong production
+const corsOptions = {
+    origin: process.env.URL_CLIENT || '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    credentials: true,
+    optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+    });
+});
+
 dbConnect();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -53,8 +65,11 @@ app.get('/', (req, res) => {
         message: 'TechShop API Server',
         status: 'running',
         version: '1.0.0',
+        baseURL: req.protocol + '://' + req.get('host'),
         endpoints: {
+            health: '/health',
             products: '/product',
+            productsAlias: '/products', // Alias for /product
             users: '/user',
             auth: '/auth',
             cart: '/cart',
@@ -64,6 +79,11 @@ app.get('/', (req, res) => {
             wishlist: '/wishlist',
             notification: '/notification',
             returnOrder: '/returnOrder'
+        },
+        documentation: {
+            note: 'All endpoints support standard HTTP methods (GET, POST, PUT, DELETE, PATCH)',
+            authentication: 'Most endpoints require authentication via Bearer token in Authorization header',
+            cors: 'CORS is enabled for configured origins'
         }
     });
 });
@@ -94,6 +114,25 @@ app.get('/auth/login', (req, res) => {
     res.status(405).json({
         error: 'Method not allowed',
         message: 'Please use POST /auth/login for authentication'
+    });
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({
+        success: false,
+        message: 'Route not found',
+        path: req.path,
+    });
+});
+
+// Error handler middleware
+app.use((err, req, res, next) => {
+    console.error('Error:', err);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Internal server error',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
     });
 });
 
