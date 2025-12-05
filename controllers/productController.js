@@ -23,48 +23,89 @@ const productController = {
     addProduct: async (req, res) => {
         try {
             const { name, description, productType } = req.body;
-            const thumbnail = req.files?.thumbnail[0].path;
+            const thumbnail = req.files?.thumbnail?.[0]?.path;
             const listImage = req.files?.listImage?.map((el) => el.path);
 
-            if (!name || !description || !thumbnail || !productType || !listImage) {
-                return res.status(400).json({ message: 'Missing input' });
+            if (!name || !description || !thumbnail || !productType || !listImage || listImage.length === 0) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Missing required fields: name, description, thumbnail, productType, listImage' 
+                });
             }
 
             const category = await ProductCategory.findOne({ title: productType });
             if (!category) {
-                return res.status(400).json({ message: 'Invalid product type' });
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid product type' 
+                });
             }
+            
             const ProductModel = productModels[productType];
             if (!ProductModel) {
-                return res.status(400).json({ message: 'Invalid product type' });
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid product type' 
+                });
             }
+            
             const newProduct = new ProductModel({
                 ...req.body,
                 thumbnail,
                 listImage,
                 productCategory: category._id,
             });
+            
             const savedProduct = await newProduct.save();
-            return res.status(201).json(savedProduct);
+            return res.status(201).json({
+                success: true,
+                product: savedProduct
+            });
         } catch (error) {
-            res.status(500).json({ message: error.message });
+            console.error('Error in addProduct:', error);
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to create product' 
+            });
         }
     },
 
     // Lấy sản phẩm theo id
     getAnProductByID: async (req, res) => {
-        const id = req.params.id;
         try {
+            const id = req.params.id;
+            
+            // Validate ObjectId
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid product ID format' 
+                });
+            }
+            
             const product = await Product.findById(id).populate({
                 path: 'ratings.postedBy',
                 select: 'fullName avatar',
             });
+            
             if (!product) {
-                return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+                return res.status(404).json({ 
+                    success: false,
+                    message: 'Không tìm thấy sản phẩm' 
+                });
             }
-            res.status(200).json(product);
+            
+            res.status(200).json({
+                success: true,
+                product
+            });
         } catch (error) {
-            res.status(500).json({ message: error.message });
+            console.error('Error in getAnProductByID:', error);
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to get product' 
+            });
         }
     },
 
@@ -169,43 +210,77 @@ const productController = {
 
             const totalProducts = await Product.countDocuments(query);
             res.status(200).json({
+                success: true,
                 page,
                 per_page,
                 totalProducts,
                 totalPages: Math.ceil(totalProducts / per_page),
-                products,
+                products: products || [],
             });
         } catch (error) {
-            res.status(500).json({ message: error.message });
+            console.error('Error in getAllProducts:', error);
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to get products',
+                products: []
+            });
         }
     },
 
     // Lấy sản phẩm theo category
     getProductByCategory: async (req, res) => {
-        const category = req.params.category.toLowerCase();
-        let products;
         try {
-            if (category === 'laptop') {
-                products = await Laptop.find();
-            } else if (category === 'phone') {
-                products = await Phone.find();
-            } else if (category === 'tv') {
-                products = await TV.find();
-            } else if (category === 'watch') {
-                products = await Watch.find();
-            } else if (category === 'camera') {
-                products = await Camera.find();
-            } else if (category === 'pc') {
-                products = await PC.find();
-            } else if (category === 'monitor') {
-                products = await Monitor.find();
+            const category = req.params.category?.toLowerCase();
+            let products = [];
+            
+            if (!category) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Category is required' 
+                });
             }
-            if (products.length === 0) {
-                return res.status(404).json({ message: 'Không tìm thấy sản phẩm' });
+            
+            switch (category) {
+                case 'laptop':
+                    products = await Laptop.find().lean();
+                    break;
+                case 'phone':
+                    products = await Phone.find().lean();
+                    break;
+                case 'tv':
+                    products = await TV.find().lean();
+                    break;
+                case 'watch':
+                    products = await Watch.find().lean();
+                    break;
+                case 'camera':
+                    products = await Camera.find().lean();
+                    break;
+                case 'pc':
+                    products = await PC.find().lean();
+                    break;
+                case 'monitor':
+                    products = await Monitor.find().lean();
+                    break;
+                default:
+                    return res.status(400).json({ 
+                        success: false,
+                        message: 'Invalid category' 
+                    });
             }
-            res.status(200).json(products);
+            
+            res.status(200).json({
+                success: true,
+                products: products || [],
+                count: products.length
+            });
         } catch (error) {
-            res.status(500).json({ message: error.message });
+            console.error('Error in getProductByCategory:', error);
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to get products by category',
+                products: []
+            });
         }
     },
     // danh gia
@@ -249,10 +324,31 @@ const productController = {
     getFeaturedProducts: async (req, res) => {
         try {
             const limit = parseInt(req.query.limit) || 5;
-            const featuredProducts = await Product.find({ isFeature: true }).limit(limit);
+            
+            // Query với fallback nếu isFeature không tồn tại
+            // Sử dụng $or để handle cả true và undefined/null
+            const featuredProducts = await Product.find({ 
+                $or: [
+                    { isFeature: true },
+                    { isFeature: { $exists: false } } // Fallback cho products cũ
+                ]
+            })
+            .limit(limit)
+            .sort({ avgStar: -1, createdAt: -1 }) // Sort by rating và date
+            .lean(); // Use lean() for better performance
 
-            if (!featuredProducts.length) {
-                return res.status(404).json({ message: 'No featured products found.' });
+            // Nếu không có featured products, trả về top products by rating
+            if (!featuredProducts || featuredProducts.length === 0) {
+                const topProducts = await Product.find()
+                    .sort({ avgStar: -1, createdAt: -1 })
+                    .limit(limit)
+                    .lean();
+                
+                return res.status(200).json({
+                    success: true,
+                    featuredProducts: topProducts || [],
+                    message: topProducts.length > 0 ? 'Top rated products' : 'No products available'
+                });
             }
 
             res.status(200).json({
@@ -260,36 +356,75 @@ const productController = {
                 featuredProducts,
             });
         } catch (error) {
-            res.status(500).json({ message: 'Internal server error', error: error.message });
+            console.error('Error in getFeaturedProducts:', error);
+            res.status(500).json({ 
+                success: false,
+                message: 'Internal server error', 
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
         }
     },
     getProductsBySeries: async (req, res) => {
         try {
-            const name = req.body.name;
-            const products = await Product.find({ name: name });
+            const name = req.body?.name || req.query?.name;
+            
+            if (!name) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Product name is required',
+                    products: []
+                });
+            }
+            
+            const products = await Product.find({ 
+                name: { $regex: name, $options: 'i' } 
+            }).limit(10).lean();
+            
             return res.json({
                 success: true,
-                products,
+                products: products || [],
+                count: products.length
             });
         } catch (error) {
-            return res.json({
+            console.error('Error in getProductsBySeries:', error);
+            return res.status(500).json({
                 success: false,
-                mes: 'Có lỗi xảy ra',
+                message: error.message || 'Có lỗi xảy ra',
+                products: []
             });
         }
     },
     deleteProduct: async (req, res) => {
         try {
             const id = req.params.id;
-            const response = await Product.findByIdAndDelete({ _id: id });
+            
+            // Validate ObjectId
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid product ID format' 
+                });
+            }
+            
+            const product = await Product.findById(id);
+            if (!product) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Product not found'
+                });
+            }
+            
+            const response = await Product.findByIdAndDelete(id);
             res.status(200).json({
                 success: true,
-                mes: 'Xóa sản phẩm thành công',
+                message: 'Xóa sản phẩm thành công',
             });
         } catch (error) {
-            return res.json({
+            console.error('Error in deleteProduct:', error);
+            res.status(500).json({
                 success: false,
-                mes: 'Có lỗi xảy ra',
+                message: error.message || 'Failed to delete product',
             });
         }
     },

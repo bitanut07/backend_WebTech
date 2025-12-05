@@ -9,6 +9,21 @@ const orderController = {
             const { id } = req.user;
             const { infoReceive, items, total_price, payment_method, coupon } = req.body;
 
+            // Validation
+            if (!infoReceive || !items || !total_price || !payment_method) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Missing required fields: infoReceive, items, total_price, payment_method'
+                });
+            }
+
+            if (!Array.isArray(items) || items.length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Items must be a non-empty array'
+                });
+            }
+
             const newOrder = await Order.create({
                 items: items,
                 total_price: total_price,
@@ -20,71 +35,139 @@ const orderController = {
                 discount: coupon ? total_price * coupon.discount : 0,
             });
 
-            return res.json({
-                success: newOrder ? true : false,
-                newOrder: newOrder ? newOrder : 'Create new order failed!!',
+            return res.status(201).json({
+                success: true,
+                newOrder: newOrder
             });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: 'Error creating order', error });
+            console.error('Error in createOrder:', error);
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Error creating order' 
+            });
         }
     },
     updateStatus: async (req, res, next) => {
         try {
             const { id } = req.params;
             const { status } = req.body;
-            if (!status)
-                return res.status(404).json({
+            
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid order ID format'
+                });
+            }
+            
+            if (!status) {
+                return res.status(400).json({
                     success: false,
                     message: 'Missing status',
                 });
+            }
+            
+            const validStatuses = ['Processing', 'confirmed ', 'Shipped', 'Delivered', 'Return Pending', 'Cancelled'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid status value'
+                });
+            }
+            
+            const order = await Order.findById(id);
+            if (!order) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Order not found'
+                });
+            }
+            
             const response = await Order.findByIdAndUpdate(id, { status }, { new: true });
             return res.json({
-                success: response ? true : false,
-                response: response ? response : 'Update failed!!!',
+                success: true,
+                order: response
             });
         } catch (error) {
+            console.error('Error in updateStatus:', error);
             next(new MyError(500, error.message, error.stack));
         }
     },
     getOrderUser: async (req, res, next) => {
         try {
             const { id } = req.user;
-            const orders = await Order.find({ order_by: id }).populate({
-                path: 'items.product',
-                select: 'name price thumbnail',
-            });
+            const orders = await Order.find({ order_by: id })
+                .populate({
+                    path: 'items.product',
+                    select: 'name price thumbnail',
+                })
+                .sort({ date_order: -1 })
+                .lean();
 
             res.json({
-                success: orders.length > 0,
-                orders: orders.length > 0 ? orders : 'Order not found',
+                success: true,
+                orders: orders || [],
+                count: orders.length
             });
         } catch (error) {
+            console.error('Error in getOrderUser:', error);
             next(new MyError(500, error.message, error.stack));
         }
     },
     getOrderAdmin: async (req, res, next) => {
         try {
-            const orders = await Order.find();
+            const orders = await Order.find()
+                .populate('order_by', 'fullName email')
+                .populate({
+                    path: 'items.product',
+                    select: 'name price thumbnail',
+                })
+                .sort({ date_order: -1 })
+                .lean();
+                
             res.json({
-                success: orders ? true : false,
-                orders: orders ? orders : 'Order not found',
+                success: true,
+                orders: orders || [],
+                count: orders.length
             });
         } catch (error) {
+            console.error('Error in getOrderAdmin:', error);
             next(new MyError(500, error.message, error.stack));
         }
     },
     getOrderById: async (req, res, next) => {
         try {
             const orderId = req.params.id;
-            const order = await Order.findById(orderId).populate('order_by', 'fullName email phone').populate({
-                path: 'items.product',
-                select: 'name price listImage', // Changed from thumbnail to listImage
-            });
+            
+            const mongoose = require('mongoose');
+            if (!mongoose.Types.ObjectId.isValid(orderId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Invalid order ID format'
+                });
+            }
+            
+            const order = await Order.findById(orderId)
+                .populate('order_by', 'fullName email phone')
+                .populate({
+                    path: 'items.product',
+                    select: 'name price listImage',
+                })
+                .lean();
+                
+            if (!order) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Order not found'
+                });
+            }
+            
             return res.json({
-                order,
+                success: true,
+                order: order
             });
         } catch (error) {
+            console.error('Error in getOrderById:', error);
             next(new MyError(500, error.message, error.stack));
         }
     },

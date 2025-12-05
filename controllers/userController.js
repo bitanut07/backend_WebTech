@@ -72,26 +72,70 @@ const userController = {
 
     // get user current
     getUserCurrent: async (req, res) => {
-        const { id } = req.user;
-        const user = await User.findById(id);
-        return res.status(200).json({
-            success: !!user,
-            data: user ? user : 'User not found',
-        });
-    },
-    updateUser: async (req, res) => {
-        const { id } = req.user;
-        if (!id || Object.keys(req.body).length === 0) {
-            return res.status(500).json({
+        try {
+            const { id } = req.user;
+            const user = await User.findById(id).select('-refreshToken -password');
+            
+            if (!user) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found',
+                });
+            }
+            
+            return res.status(200).json({
+                success: true,
+                data: user
+            });
+        } catch (error) {
+            console.error('Error in getUserCurrent:', error);
+            res.status(500).json({
                 success: false,
-                message: 'Missing input',
+                message: error.message || 'Failed to get user'
             });
         }
-        const response = await User.findByIdAndUpdate(id, req.body, { new: true });
-        res.status(200).json({
-            success: response ? true : false,
-            updateUser: response ? response : 'Update user failed !!',
-        });
+    },
+    updateUser: async (req, res) => {
+        try {
+            const { id } = req.user;
+            
+            if (!id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'User ID is required',
+                });
+            }
+            
+            if (Object.keys(req.body).length === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'No fields to update',
+                });
+            }
+            
+            // Don't allow updating sensitive fields
+            const { password, refreshToken, admin, ...updateData } = req.body;
+            
+            const response = await User.findByIdAndUpdate(id, updateData, { new: true }).select('-refreshToken -password');
+            
+            if (!response) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'User not found'
+                });
+            }
+            
+            res.status(200).json({
+                success: true,
+                updateUser: response
+            });
+        } catch (error) {
+            console.error('Error in updateUser:', error);
+            res.status(500).json({
+                success: false,
+                message: error.message || 'Failed to update user'
+            });
+        }
     },
 
     forgotPassword: async (req, res) => {

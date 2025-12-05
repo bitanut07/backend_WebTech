@@ -55,36 +55,66 @@ const cartController = {
             Cart.cart.subtotal = Cart.cart.items.reduce((total, item) => total + item.total, 0);
 
             await Cart.save();
-            return res.json({ quantity: Cart.cart.quantity });
+            return res.json({ 
+                success: true,
+                quantity: Cart.cart.quantity 
+            });
         } catch (error) {
-            return res.status(500).json({ message: error.message });
+            console.error('Error in addToCart:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to add product to cart' 
+            });
         }
     },
     // Hiển thị giỏ hàng
     showToCart: async (req, res) => {
         try {
             let Cart = await shoppingCart.findOne({ user: req.user.id });
-            if (!Cart) {
-                return res.status(404).json({ message: 'Cart not found' });
+            if (!Cart || !Cart.cart || !Cart.cart.items) {
+                return res.status(200).json({
+                    success: true,
+                    items: [],
+                    quantity: 0,
+                    subtotal: 0,
+                });
             }
+            
             const items = await Promise.all(
                 Cart.cart.items.map(async (item) => {
-                    const product = await Product.findById(item.product);
-                    return {
-                        product,
-                        color: item.color,
-                        quantity: item.quantity,
-                        total: item.total,
-                    };
+                    try {
+                        const product = await Product.findById(item.product);
+                        if (!product) {
+                            return null; // Skip deleted products
+                        }
+                        return {
+                            product,
+                            color: item.color,
+                            quantity: item.quantity,
+                            total: item.total,
+                        };
+                    } catch (err) {
+                        console.error('Error loading product:', err);
+                        return null;
+                    }
                 }),
             );
+            
+            // Filter out null items (deleted products)
+            const validItems = items.filter(item => item !== null);
+            
             return res.json({
-                items,
-                quantity: Cart.cart.quantity,
-                subtotal: Cart.cart.subtotal,
+                success: true,
+                items: validItems,
+                quantity: Cart.cart.quantity || 0,
+                subtotal: Cart.cart.subtotal || 0,
             });
         } catch (error) {
-            return res.status(500).json({ message: error.message });
+            console.error('Error in showToCart:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to get cart' 
+            });
         }
     },
     // Cập nhật giỏ hàng
@@ -125,9 +155,16 @@ const cartController = {
             Cart.cart.subtotal = Cart.cart.items.reduce((total, item) => total + item.total, 0);
 
             await Cart.save();
-            return res.status(200).json({ message: 'Update cart successfully' });
+            return res.status(200).json({ 
+                success: true,
+                message: 'Update cart successfully' 
+            });
         } catch (error) {
-            return res.status(500).json({ message: error.message });
+            console.error('Error in updateCart:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to update cart' 
+            });
         }
     },
     removeItem: async (req, res) => {
@@ -162,9 +199,16 @@ const cartController = {
             Cart.cart.subtotal = Cart.cart.items.reduce((total, item) => total + item.total, 0);
 
             await Cart.save();
-            return res.status(200).json({ message: 'Remove product from cart successfully' });
+            return res.status(200).json({ 
+                success: true,
+                message: 'Remove product from cart successfully' 
+            });
         } catch (error) {
-            return res.status(500).json({ message: error.message });
+            console.error('Error in removeItem:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to remove item from cart' 
+            });
         }
     },
 };

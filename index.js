@@ -33,17 +33,34 @@ const allowedOrigins = process.env.URL_CLIENT
     ? process.env.URL_CLIENT.split(',').map(url => url.trim())
     : ['http://localhost:3000', 'http://localhost:3001'];
 
+// Log CORS configuration để debug
+console.log('=== CORS Configuration ===');
+console.log('NODE_ENV:', process.env.NODE_ENV);
+console.log('URL_CLIENT:', process.env.URL_CLIENT || 'Not set (using defaults)');
+console.log('Allowed Origins:', allowedOrigins);
+console.log('========================');
+
 const corsOptions = {
     origin: function (origin, callback) {
         // Cho phép requests không có origin (mobile apps, Postman, etc.)
-        if (!origin) return callback(null, true);
+        if (!origin) {
+            console.log('CORS: Allowing request without origin (Postman, mobile apps, etc.)');
+            return callback(null, true);
+        }
+        
+        // Log để debug
+        console.log(`CORS: Checking origin: ${origin}`);
+        console.log(`CORS: Allowed origins:`, allowedOrigins);
         
         // Cho phép nếu origin trong danh sách allowed hoặc đang ở development
         if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            console.log(`CORS: ✅ Allowing origin: ${origin}`);
             callback(null, true);
         } else {
-            console.warn(`CORS blocked origin: ${origin}`);
-            callback(new Error('Not allowed by CORS'));
+            console.warn(`CORS: ❌ BLOCKED origin: ${origin}`);
+            console.warn(`CORS: Allowed origins are:`, allowedOrigins);
+            console.warn(`CORS: To fix, add this URL to URL_CLIENT env var in backend`);
+            callback(new Error(`Not allowed by CORS. Origin: ${origin} not in allowed list. Please add it to URL_CLIENT environment variable.`));
         }
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
@@ -82,11 +99,20 @@ app.use(
 );
 // Root route
 app.get('/', (req, res) => {
+    // Detect HTTPS correctly (Render và các platform khác dùng proxy)
+    const protocol = req.get('x-forwarded-proto') || req.protocol || 'https';
+    const host = req.get('host');
+    const baseURL = `${protocol}://${host}`;
+    
     res.json({
         message: 'TechShop API Server',
         status: 'running',
         version: '1.0.0',
-        baseURL: req.protocol + '://' + req.get('host'),
+        baseURL: baseURL,
+        cors: {
+            allowedOrigins: allowedOrigins,
+            configured: !!process.env.URL_CLIENT,
+        },
         endpoints: {
             health: '/health',
             products: '/product',
@@ -149,11 +175,34 @@ app.use((req, res) => {
 
 // Error handler middleware
 app.use((err, req, res, next) => {
+    // Log error với thông tin chi tiết
+    console.error('=== Error Handler ===');
     console.error('Error:', err);
+    console.error('Request URL:', req.originalUrl);
+    console.error('Request Method:', req.method);
+    if (err.stack) {
+        console.error('Error Stack:', err.stack);
+    }
+    console.error('===================');
+    
+    // Nếu là CORS error, trả về 403 với message rõ ràng
+    if (err.message && err.message.includes('CORS')) {
+        return res.status(403).json({
+            success: false,
+            message: err.message,
+            type: 'CORS_ERROR',
+            hint: 'Please check URL_CLIENT environment variable in backend'
+        });
+    }
+    
     res.status(err.status || 500).json({
         success: false,
         message: err.message || 'Internal server error',
-        ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+        ...(process.env.NODE_ENV === 'development' && { 
+            stack: err.stack,
+            url: req.originalUrl,
+            method: req.method,
+        }),
     });
 });
 

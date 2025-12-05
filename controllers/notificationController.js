@@ -105,27 +105,50 @@ const notificationController = {
                 });
             }
         } catch (error) {
-            console.error('Error:', error);
-            return res.status(500).json({ error: error.message });
+            console.error('Error in createNotifications:', error);
+            return res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to create notifications' 
+            });
         }
     },
 
     getUserNotifications: async (req, res) => {
         try {
             const userId = req.params.userId;
-            console.log('user: ', userId);
+            const mongoose = require('mongoose');
+            
+            if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid user ID format',
+                    notifications: []
+                });
+            }
+            
             const userNotification = await Notification.findOne({ user: userId });
 
-            if (!userNotification) {
-                return res.status(200).json([]);
+            if (!userNotification || !userNotification.notifies) {
+                return res.status(200).json({
+                    success: true,
+                    notifications: []
+                });
             }
 
-            const sortedNotifications = userNotification.notifies.sort((a, b) => b.createAt - a.createAt);
+            const sortedNotifications = userNotification.notifies
+                .sort((a, b) => new Date(b.createAt) - new Date(a.createAt));
 
-            res.status(200).json(sortedNotifications);
+            res.status(200).json({
+                success: true,
+                notifications: sortedNotifications || []
+            });
         } catch (error) {
             console.error('Get notifications error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to get notifications',
+                notifications: []
+            });
         }
     },
 
@@ -152,10 +175,16 @@ const notificationController = {
 
             const updatedNotification = result.notifies.find((notify) => notify._id.toString() === notificationId);
 
-            res.status(200).json(updatedNotification);
+            res.status(200).json({
+                success: true,
+                notification: updatedNotification
+            });
         } catch (error) {
             console.error('Mark as read error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to mark notification as read' 
+            });
         }
     },
 
@@ -170,13 +199,22 @@ const notificationController = {
             );
 
             if (!result) {
-                return res.status(404).json({ error: 'User notifications not found' });
+                return res.status(404).json({ 
+                    success: false,
+                    message: 'User notifications not found' 
+                });
             }
 
-            res.status(200).json({ success: true });
+            res.status(200).json({ 
+                success: true,
+                message: 'All notifications marked as read'
+            });
         } catch (error) {
             console.error('Mark all as read error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to mark all notifications as read' 
+            });
         }
     },
 
@@ -184,6 +222,14 @@ const notificationController = {
         try {
             const { id: userId } = req.user;
             const { notificationId } = req.params;
+            const mongoose = require('mongoose');
+            
+            if (!notificationId || !mongoose.Types.ObjectId.isValid(notificationId)) {
+                return res.status(400).json({ 
+                    success: false,
+                    message: 'Invalid notification ID format' 
+                });
+            }
 
             const result = await Notification.findOneAndUpdate(
                 { user: userId },
@@ -192,13 +238,22 @@ const notificationController = {
             );
 
             if (!result) {
-                return res.status(404).json({ error: 'Notification not found' });
+                return res.status(404).json({ 
+                    success: false,
+                    message: 'Notification not found' 
+                });
             }
 
-            res.status(200).json({ success: true });
+            res.status(200).json({ 
+                success: true,
+                message: 'Notification deleted successfully'
+            });
         } catch (error) {
             console.error('Delete notification error:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ 
+                success: false,
+                message: error.message || 'Failed to delete notification' 
+            });
         }
     },
 };
