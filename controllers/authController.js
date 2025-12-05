@@ -11,11 +11,24 @@ const axios = require('axios');
 const authController = {
     registerUser: async (req, res) => {
         try {
-            const { email } = req.body;
+            // Normalize email: trim và lowercase
+            const email = req.body.email?.trim().toLowerCase();
+            if (!email) {
+                return res.status(400).json({ 
+                    success: false, 
+                    mes: 'Email không được để trống' 
+                });
+            }
             const user = await User.findOne({ email });
             if (user) return res.json({ success: false, mes: 'Email này đã tồn tại !!!' });
             else {
-                res.cookie('infoRegister', { ...req.body }, { httpOnly: true, maxAge: 10 * 60 * 1000 });
+                const isProduction = process.env.NODE_ENV === 'production';
+                res.cookie('infoRegister', { ...req.body }, { 
+                    httpOnly: true, 
+                    secure: isProduction,
+                    sameSite: isProduction ? 'none' : 'lax',
+                    maxAge: 10 * 60 * 1000 
+                });
                 await VerifyOtp.findOneAndDelete({ email });
 
                 const otp = generateOTP();
@@ -96,7 +109,8 @@ const authController = {
                 }
                 // Xử lý otp quên mật khẩu
             } else {
-                const email = req.cookies.email;
+                // Normalize email từ cookie
+                const email = req.cookies.email?.trim().toLowerCase();
                 if (!email) {
                     return res.json({
                         success: false,
@@ -136,7 +150,13 @@ const authController = {
                     process.env.ACCESS_KEY,
                     { expiresIn: '10m' },
                 );
-                res.cookie('token', token, { httpOnly: true, maxAge: 10 * 60 * 1000 });
+                const isProduction = process.env.NODE_ENV === 'production';
+                res.cookie('token', token, { 
+                    httpOnly: true, 
+                    secure: isProduction,
+                    sameSite: isProduction ? 'none' : 'lax',
+                    maxAge: 10 * 60 * 1000 
+                });
                 return res.json({
                     success: true,
                     mes: 'Xác thực OPT thành công !',
@@ -208,7 +228,16 @@ const authController = {
     // Login
     loginUser: async (req, res) => {
         try {
-            const user = await User.findOne({ email: req.body.email });
+            // Normalize email: trim và lowercase để tránh lỗi
+            const email = req.body.email?.trim().toLowerCase();
+            if (!email) {
+                return res.status(400).json({
+                    success: false,
+                    mes: 'Email không được để trống',
+                });
+            }
+            
+            const user = await User.findOne({ email: email });
             if (!user) {
                 return res.json({
                     success: false,
@@ -252,17 +281,24 @@ const authController = {
             );
 
             await User.findByIdAndUpdate(user.id, { refreshToken: newRefreshToken }, { new: true });
+            
+            // Cookie settings cho production
+            const isProduction = process.env.NODE_ENV === 'production';
             res.cookie('refreshToken', newRefreshToken, {
                 httpOnly: true,
-                secure: false,
+                secure: isProduction, // true cho HTTPS trong production
                 path: '/',
-                sameSize: 'strict',
+                sameSite: isProduction ? 'none' : 'lax', // 'none' cho cross-site trong production
                 maxAge: 10 * 24 * 60 * 60 * 1000,
             });
             const { password, refreshToken, ...userData } = user._doc;
             return res.status(200).json({ success: true, userData, accessToken });
         } catch (error) {
-            res.status(500).json({ success: false, mes: 'Login failed' });
+            console.error('Login error:', error);
+            res.status(500).json({ 
+                success: false, 
+                mes: error.message || 'Đăng nhập thất bại. Vui lòng thử lại sau.' 
+            });
         }
     },
     logoutUser: async (req, res) => {
@@ -344,11 +380,13 @@ const authController = {
                 process.env.REFRESH_KEY,
                 { expiresIn: '10d' },
             );
+            // Cookie settings cho production
+            const isProduction = process.env.NODE_ENV === 'production';
             res.cookie('refreshToken', newRefreshToken, {
                 httpOnly: true,
-                secure: false,
+                secure: isProduction, // true cho HTTPS trong production
                 path: '/',
-                sameSize: 'strict',
+                sameSite: isProduction ? 'none' : 'lax', // 'none' cho cross-site trong production
                 maxAge: 10 * 24 * 60 * 60 * 1000,
             });
             const { password, refreshToken, ...userData } = user._doc;

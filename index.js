@@ -28,12 +28,29 @@ app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
 app.use(cookieParser());
 app.use(morgan('common'));
 
-// CORS configuration - cho phép tất cả origins trong development, chỉ production trong production
+// CORS configuration - hỗ trợ multiple origins cho production
+const allowedOrigins = process.env.URL_CLIENT 
+    ? process.env.URL_CLIENT.split(',').map(url => url.trim())
+    : ['http://localhost:3000', 'http://localhost:3001'];
+
 const corsOptions = {
-    origin: process.env.URL_CLIENT || '*',
+    origin: function (origin, callback) {
+        // Cho phép requests không có origin (mobile apps, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        // Cho phép nếu origin trong danh sách allowed hoặc đang ở development
+        if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
+            callback(null, true);
+        } else {
+            console.warn(`CORS blocked origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     credentials: true,
     optionsSuccessStatus: 200,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    exposedHeaders: ['Authorization'],
 };
 app.use(cors(corsOptions));
 
@@ -48,13 +65,17 @@ app.get('/health', (req, res) => {
 dbConnect();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+// Session configuration cho production
+const isProduction = process.env.NODE_ENV === 'production';
 app.use(
     session({
-        secret: 'Group16',
+        secret: process.env.SESSION_SECRET || 'Group16',
         resave: false,
         saveUninitialized: false,
         cookie: {
             httpOnly: true,
+            secure: isProduction, // true cho HTTPS trong production
+            sameSite: isProduction ? 'none' : 'lax',
             maxAge: 20 * 60 * 1000,
         },
     }),
